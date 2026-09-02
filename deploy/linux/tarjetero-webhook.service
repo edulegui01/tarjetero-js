@@ -1,0 +1,15 @@
+[Unit]
+Description=Tarjetero Webhook Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tarjetero-webhook-server
+ExecStart=/usr/bin/env node server.js
+EnvironmentFile=/opt/tarjetero-webhook-server/.env
+Restart=on-failure
+RestartSec=5
+User=tarjetero
+
+[Install]
+WantedBy=multi-user.target

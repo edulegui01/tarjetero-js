@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tarjetero</title>
+<style>
+  /* Poppins servida desde este mismo servidor (public/fonts), no desde
+     Google Fonts: el tótem corre en modo kiosco y no depende de que el
+     tablet tenga internet para mostrar los mensajes con la tipografía de
+     la marca (la misma del "Resto Café" del logo). */
+  @font-face {
+    font-family: 'Poppins';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/poppins-400-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'Poppins';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/poppins-400-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'Poppins';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/poppins-700-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'Poppins';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/poppins-700-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: 'Poppins', system-ui, sans-serif;
+    background: #111827;
+    color: #f9fafb;
+    transition: background-color 0.2s ease;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  body.success { background: #166534; }
+  body.failure { background: #991b1b; }
+  body.connectionError { background: #9a3412; }
+
+  #message {
+    font-size: 3rem;
+    font-weight: 700;
+    padding: 2rem;
+    max-width: 90vw;
+  }
+  #waiting {
+    font-size: 1.5rem;
+    opacity: 0.7;
+  }
+
+  #carousel {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    background: #fff;
+  }
+  #carousel.hidden { display: none; }
+  #carousel img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+  #carousel img.active { opacity: 1; }
+
+  #message.hidden { display: none; }
+
+  #unlock {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #111827;
+    font-size: 2rem;
+    font-weight: 600;
+    text-align: center;
+    padding: 2rem;
+    cursor: pointer;
+    z-index: 10;
+  }
+  #unlock.hidden { display: none; }
+</style>
+</head>
+<body id="body">
+  <div id="unlock">Tocá la pantalla para activar el sonido</div>
+
+  <div id="carousel" class="hidden"></div>
+
+  <div id="message">
+    <div id="waiting">Esperando lectura de tarjeta…</div>
+  </div>
+
+<script>
+  const body = document.getElementById('body');
+  const message = document.getElementById('message');
+  const unlock = document.getElementById('unlock');
+  const carousel = document.getElementById('carousel');
+
+  // Carrusel de imágenes configurado desde /admin, mostrado en vez del
+  // texto "Esperando lectura de tarjeta…" cuando hay imágenes cargadas.
+  let carouselTimer = null;
+  let carouselIndex = 0;
+
+  function startCarousel(images, intervalSeconds) {
+    carousel.innerHTML = '';
+    images.forEach((url, i) => {
+      const img = document.createElement('img');
+      img.src = url;
+      if (i === 0) img.classList.add('active');
+      carousel.appendChild(img);
+    });
+
+    const imgs = carousel.querySelectorAll('img');
+    carouselTimer = setInterval(() => {
+      imgs[carouselIndex].classList.remove('active');
+      carouselIndex = (carouselIndex + 1) % imgs.length;
+      imgs[carouselIndex].classList.add('active');
+    }, Math.max(1, intervalSeconds) * 1000);
+  }
+
+  fetch('/carousel-images')
+    .then((res) => res.json())
+    .then(({ images, intervalSeconds }) => {
+      if (images && images.length > 0) {
+        startCarousel(images, intervalSeconds);
+        render(lastState);
+      }
+    })
+    .catch(() => {});
+
+  // El WebView de Android no implementa la Web Speech API (`speechSynthesis`
+  // existe en Chrome para Android pero no en el WebView embebido que usan
+  // apps de terceros). La app kiosco expone un puente nativo
+  // (`window.AndroidTts`, ver MainActivity/TtsSpeaker) que usa el motor TTS
+  // del sistema. Si no está presente (navegador de escritorio, pruebas en
+  // voice-test.html sin la app), se usa speechSynthesis como antes.
+  const hasNativeTts = typeof window.AndroidTts !== 'undefined' &&
+    typeof window.AndroidTts.speak === 'function';
+
+  // Elegir una voz en español explícitamente: si no, algunos tablets Android
+  // caen en una voz en inglés o no hablan nada.
+  let spanishVoice = null;
+  function pickSpanishVoice() {
+    const voices = window.speechSynthesis.getVoices();
+    spanishVoice =
+      voices.find((v) => v.lang === 'es-AR') ||
+      voices.find((v) => v.lang && v.lang.startsWith('es')) ||
+      null;
+  }
+  if (!hasNativeTts && 'speechSynthesis' in window) {
+    pickSpanishVoice();
+    window.speechSynthesis.onvoiceschanged = pickSpanishVoice;
+  }
+
+  function speak(text) {
+    if (!text) return;
+    if (hasNativeTts) {
+      window.AndroidTts.speak(text);
+      return;
+    }
+    if (!('speechSynthesis' in window)) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-AR';
+    if (spanishVoice) utterance.voice = spanishVoice;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }
+
+  // Android/Chrome no deja reproducir audio hasta que hubo un toque del
+  // usuario en la página. Este toque "desbloquea" el audio para el resto
+  // de la sesión (el tablet queda con la página siempre abierta). El TTS
+  // nativo no tiene esa restricción, así que con el puente presente el
+  // audio queda desbloqueado desde el arranque.
+  let audioUnlocked = hasNativeTts;
+  if (hasNativeTts) {
+    unlock.classList.add('hidden');
+  }
+  unlock.addEventListener('click', () => {
+    speak('Sonido activado');
+    audioUnlocked = true;
+    unlock.classList.add('hidden');
+  });
+
+  let lastState = { status: 'waiting' };
+
+  function render(state) {
+    lastState = state;
+    body.className = state.status === 'waiting' ? '' : state.status;
+    const hasCarousel = carousel.childElementCount > 0;
+
+    if (state.status === 'waiting') {
+      carousel.classList.toggle('hidden', !hasCarousel);
+      message.classList.toggle('hidden', hasCarousel);
+      message.innerHTML = '<div id="waiting">Esperando lectura de tarjeta…</div>';
+      return;
+    }
+
+    carousel.classList.add('hidden');
+    message.classList.remove('hidden');
+    message.textContent = state.message || '';
+    if (audioUnlocked) speak(state.message);
+  }
+
+  const source = new EventSource('/events');
+  source.onmessage = (event) => render(JSON.parse(event.data));
+</script>
+</body>
+</html>

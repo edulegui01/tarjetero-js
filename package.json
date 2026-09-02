@@ -1,0 +1,20 @@
+{
+  "name": "tarjetero-webhook-server",
+  "version": "1.0.0",
+  "description": "Recibe el webhook de eventos de la placa Hikvision y abre la puerta correspondiente.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "service:install:windows": "node deploy/windows/install-service.js",
+    "service:uninstall:windows": "node deploy/windows/uninstall-service.js"
+  },
+  "dependencies": {
+    "digest-fetch": "^3.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^2.0.1"
+  },
+  "optionalDependencies": {
+    "node-windows": "^1.0.0-beta.8"
+  }
+}

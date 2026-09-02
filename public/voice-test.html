@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prueba de voz</title>
+<style>
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    font-family: system-ui, sans-serif;
+    background: #111827;
+    color: #f9fafb;
+  }
+  body {
+    padding: 1.5rem;
+    max-width: 32rem;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+  h1 {
+    font-size: 1.25rem;
+    margin-bottom: 0.25rem;
+  }
+  p.hint {
+    opacity: 0.7;
+    font-size: 0.9rem;
+    margin-top: 0;
+  }
+  label {
+    display: block;
+    margin-top: 1.25rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.9rem;
+    opacity: 0.85;
+  }
+  textarea, select, input[type="range"] {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 1rem;
+    font-family: inherit;
+    background: #1f2937;
+    color: #f9fafb;
+    border: 1px solid #374151;
+    border-radius: 0.5rem;
+    padding: 0.6rem;
+  }
+  textarea {
+    resize: vertical;
+    min-height: 4rem;
+  }
+  .row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+  }
+  .row output {
+    min-width: 2.5rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  button {
+    margin-top: 1.5rem;
+    width: 100%;
+    font-size: 1.1rem;
+    font-weight: 700;
+    padding: 0.9rem;
+    border: none;
+    border-radius: 0.5rem;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+  }
+  button:active { background: #1d4ed8; }
+  button.secondary {
+    margin-top: 0.6rem;
+    background: #374151;
+  }
+  #status {
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    opacity: 0.8;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+  <h1>Prueba de voz (Web Speech API)</h1>
+  <p class="hint">Usa el motor de texto a voz instalado en este dispositivo/navegador — el mismo que usa la pantalla del tarjetero.</p>
+
+  <label for="text">Texto a decir</label>
+  <textarea id="text">Salida autorizada</textarea>
+
+  <label for="voice">Voz</label>
+  <select id="voice"></select>
+
+  <label for="rate">Velocidad <output id="rateOut">1.0</output></label>
+  <div class="row">
+    <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1" />
+  </div>
+
+  <label for="pitch">Tono <output id="pitchOut">1.0</output></label>
+  <div class="row">
+    <input type="range" id="pitch" min="0" max="2" step="0.1" value="1" />
+  </div>
+
+  <button id="speak">▶ Hablar</button>
+  <button id="messages" class="secondary">Probar mensajes reales (autorizado / no pagado / error)</button>
+
+  <div id="status"></div>
+
+<script>
+  const textEl = document.getElementById('text');
+  const voiceEl = document.getElementById('voice');
+  const rateEl = document.getElementById('rate');
+  const pitchEl = document.getElementById('pitch');
+  const rateOut = document.getElementById('rateOut');
+  const pitchOut = document.getElementById('pitchOut');
+  const statusEl = document.getElementById('status');
+
+  rateEl.addEventListener('input', () => (rateOut.textContent = rateEl.value));
+  pitchEl.addEventListener('input', () => (pitchOut.textContent = pitchEl.value));
+
+  function loadVoices() {
+    const voices = window.speechSynthesis.getVoices();
+    voiceEl.innerHTML = '';
+
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '(default del navegador)';
+    voiceEl.appendChild(defaultOpt);
+
+    voices.forEach((v, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${v.name} — ${v.lang}${v.localService ? '' : ' (remota)'}`;
+      voiceEl.appendChild(opt);
+    });
+
+    const preferredIndex = voices.findIndex((v) => v.lang === 'es-AR');
+    const fallbackIndex = voices.findIndex((v) => v.lang && v.lang.startsWith('es'));
+    if (preferredIndex >= 0) voiceEl.value = preferredIndex;
+    else if (fallbackIndex >= 0) voiceEl.value = fallbackIndex;
+
+    statusEl.textContent = `${voices.length} voz(es) disponibles en este dispositivo.`;
+  }
+
+  const hasNativeTts = typeof window.AndroidTts !== 'undefined' &&
+    typeof window.AndroidTts.speak === 'function';
+
+  if (hasNativeTts) {
+    statusEl.textContent = 'Puente nativo Android detectado (AndroidTts). El selector de voz/velocidad/tono no aplica: se usa el motor TTS del sistema.';
+    voiceEl.disabled = true;
+    rateEl.disabled = true;
+    pitchEl.disabled = true;
+  } else if ('speechSynthesis' in window) {
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  } else {
+    statusEl.textContent = 'Este navegador no soporta speechSynthesis ni tiene el puente nativo Android.';
+  }
+
+  function speak(text) {
+    if (!text) return;
+    if (hasNativeTts) {
+      statusEl.textContent = `Hablando (motor nativo Android): "${text}"`;
+      window.AndroidTts.speak(text);
+      return;
+    }
+    if (!('speechSynthesis' in window)) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const selected = voiceEl.value !== '' ? voices[Number(voiceEl.value)] : null;
+    if (selected) {
+      utterance.voice = selected;
+      utterance.lang = selected.lang;
+    } else {
+      utterance.lang = 'es-AR';
+    }
+    utterance.rate = Number(rateEl.value);
+    utterance.pitch = Number(pitchEl.value);
+
+    utterance.onstart = () => (statusEl.textContent = `Hablando: "${text}"`);
+    utterance.onend = () => (statusEl.textContent += '\n(terminado)');
+    utterance.onerror = (e) => (statusEl.textContent = `Error: ${e.error}`);
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }
+
+  document.getElementById('speak').addEventListener('click', () => speak(textEl.value));
+
+  document.getElementById('messages').addEventListener('click', async () => {
+    const messages = ['Salida autorizada', 'Cuenta pendiente de pago', 'Error de conexión, avise al personal'];
+    for (const msg of messages) {
+      speak(msg);
+      await new Promise((resolve) => {
+        const check = setInterval(() => {
+          if (!window.speechSynthesis.speaking) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 200);
+      });
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  });
+</script>
+</body>
+</html>

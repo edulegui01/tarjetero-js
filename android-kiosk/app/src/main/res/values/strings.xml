@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Tarjetero Kiosk</string>
+    <string name="dialog_title">Configurar servidor</string>
+    <string name="dialog_message">Ingresá la URL del server del tarjetero (ej: http://192.168.1.50:8091/)</string>
+    <string name="dialog_hint">http://192.168.1.50:8091/</string>
+    <string name="dialog_positive">Guardar</string>
+    <string name="dialog_negative">Cancelar</string>
+    <string name="dialog_invalid_url">URL inválida. Tiene que empezar con http:// o https://</string>
+</resources>
