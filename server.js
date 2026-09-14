@@ -230,6 +230,23 @@ function setState(status, extra = {}) {
   }
 }
 
+// Enciende el LED rojo del molinete (un relé más de la placa, como las
+// puertas) para que el rechazo se vea desde lejos y no solo en la pantalla
+// del tótem. Es señalización, no parte de la decisión: si el pulso falla, el
+// rechazo ya ocurrió igual (la puerta denegada se abrió, la pantalla lo
+// muestra), así que se loguea y se sigue en vez de dejar que este error tape
+// el resultado real con un "Error de conexión" que no describe lo que pasó.
+async function encenderLedRojo(params, cardCode) {
+  try {
+    await hikvisionClient.openDoor(params.puertaLedRojo);
+  } catch (err) {
+    logError(
+      `Error encendiendo el LED rojo del molinete (cardCode=${cardCode})`,
+      err,
+    );
+  }
+}
+
 async function onCardRead(cardCode) {
   const params = getParams();
   console.log(
@@ -245,6 +262,7 @@ async function onCardRead(cardCode) {
     // Falló la consulta (red caída, respuesta inesperada, etc.): por
     // seguridad se deniega el acceso en vez de dejar pasar sin verificar.
     logError(`Error consultando tarjeta en TSM para cardCode=${cardCode}`, err);
+    await encenderLedRojo(params, cardCode);
     try {
       await hikvisionClient.openDoor(params.puertaTarjetaDenegada);
     } catch (doorErr) {
@@ -263,8 +281,11 @@ async function onCardRead(cardCode) {
   try {
     if (consumoAbierto) {
       console.log(
-        `cardCode=${cardCode}: tarjeta con consumo abierto -> puerta ${params.puertaTarjetaDenegada}`,
+        `cardCode=${cardCode}: tarjeta con consumo abierto -> puerta ${params.puertaTarjetaDenegada} y LED rojo ${params.puertaLedRojo}`,
       );
+      // El LED primero: es la señal inmediata de "no pasás", y no tiene
+      // sentido que espere el round-trip de la puerta que devuelve la tarjeta.
+      await encenderLedRojo(params, cardCode);
       await hikvisionClient.openDoor(params.puertaTarjetaDenegada);
       setState("failure", { message: params.failureMessage, cardCode });
     } else {

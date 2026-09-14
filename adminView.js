@@ -14,6 +14,7 @@ const FIELD_LABELS = {
   puertaTarjetaDenegada: 'Puerta: tarjeta denegada',
   puertaTarjetaHabilitada: 'Puerta: tarjeta habilitada',
   puertaMolinete: 'Puerta: molinete',
+  puertaLedRojo: 'Puerta: LED rojo del molinete',
   tsmCodigoEmpresa: 'TSM: código de empresa',
   tsmSerieCartao: 'TSM: serie de tarjeta',
   carouselSecondsPerImage: 'Carrusel: segundos por imagen',

@@ -13,6 +13,13 @@ día se abren `PUERTA_TARJETA_HABILITADA` y `PUERTA_MOLINETE`. Si la consulta
 falla o responde algo inesperado, se abre `PUERTA_TARJETA_DENEGADA` por
 seguridad (denegar por defecto).
 
+En los dos casos de denegación (deuda o fallo de la consulta) se pulsa
+además `PUERTA_LED_ROJO`, un relé más de la placa que enciende el LED rojo
+del molinete: el rechazo se ve desde lejos y no solo en la pantalla del
+tótem. Es señalización, no parte de la decisión -- si ese pulso falla se
+loguea y se sigue, para que un error del LED no tape en pantalla el motivo
+real del rechazo.
+
 Esa API requiere un token (`GetToken`, login con `TSM_USUARIO`/`TSM_SENHA`)
 que se manda como `Authorization: Bearer <token>`. El cliente lo cachea hasta
 que vence (campo `validate` de la respuesta de login) y pide uno nuevo
