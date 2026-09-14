@@ -12,8 +12,14 @@ lógica que antes vivía en una app Android (`NfcWebhookServer.kt` /
 - Expone una página web (`public/index.html`, servida en
   `http://<ip-del-server>:<PORT>/`, default puerto `8091`) que muestra en
   vivo el resultado (autorizado / no pagado / error de conexión) vía
-  Server-Sent Events (`GET /events`), con colores de fondo por estado y una
-  voz en español (Web Speech API `speechSynthesis`) que lee el mensaje.
+  Server-Sent Events (`GET /events`), con colores de fondo por estado y un
+  pitido (Web Audio) cuando la tarjeta se rechaza.
+
+> Nota (posterior a este brief): el tótem ya no habla. Tenía voz en español
+> leyendo el mensaje, con un puente nativo `window.AndroidTts` en la app
+> porque el WebView no implementa `speechSynthesis`; el local pidió
+> reemplazarla por un simple pitido, solo en el rechazo. El puente y
+> `TtsSpeaker.kt` siguen en la app pero ya no se usan desde la página.
 
 **Toda la lógica de negocio ya está resuelta en el server y en esa página
 web.** Lo que falta es solo la parte de "pantalla física": una app Android

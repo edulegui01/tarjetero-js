@@ -155,58 +155,67 @@
     })
     .catch(() => {});
 
-  // El WebView de Android no implementa la Web Speech API (`speechSynthesis`
-  // existe en Chrome para Android pero no en el WebView embebido que usan
-  // apps de terceros). La app kiosco expone un puente nativo
-  // (`window.AndroidTts`, ver MainActivity/TtsSpeaker) que usa el motor TTS
-  // del sistema. Si no está presente (navegador de escritorio, pruebas en
-  // voice-test.html sin la app), se usa speechSynthesis como antes.
-  const hasNativeTts = typeof window.AndroidTts !== 'undefined' &&
-    typeof window.AndroidTts.speak === 'function';
+  // Antes acá había voz: el tótem leía el mensaje con TTS (puente nativo
+  // `window.AndroidTts` en el kiosco, speechSynthesis en el navegador). El
+  // local pidió que no hable -- solo un pitido, y solo cuando la tarjeta se
+  // rechaza. El puente sigue existiendo en la app pero ya no se usa desde
+  // acá, así que sacar la voz no obligó a recompilar el APK.
+  //
+  // El pitido se genera con Web Audio en vez de reproducir un archivo: no
+  // hay un asset más que pueda faltar en el tablet (mismo criterio que las
+  // fuentes locales) y tono/duración se ajustan acá nomás.
+  const BEEP_HZ = 1400;
+  const BEEP_MS = 200;
 
-  // Elegir una voz en español explícitamente: si no, algunos tablets Android
-  // caen en una voz en inglés o no hablan nada.
-  let spanishVoice = null;
-  function pickSpanishVoice() {
-    const voices = window.speechSynthesis.getVoices();
-    spanishVoice =
-      voices.find((v) => v.lang === 'es-AR') ||
-      voices.find((v) => v.lang && v.lang.startsWith('es')) ||
-      null;
-  }
-  if (!hasNativeTts && 'speechSynthesis' in window) {
-    pickSpanishVoice();
-    window.speechSynthesis.onvoiceschanged = pickSpanishVoice;
-  }
-
-  function speak(text) {
-    if (!text) return;
-    if (hasNativeTts) {
-      window.AndroidTts.speak(text);
-      return;
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtx = new Ctx();
     }
-    if (!('speechSynthesis' in window)) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-AR';
-    if (spanishVoice) utterance.voice = spanishVoice;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    return audioCtx;
   }
 
-  // Android/Chrome no deja reproducir audio hasta que hubo un toque del
-  // usuario en la página. Este toque "desbloquea" el audio para el resto
-  // de la sesión (el tablet queda con la página siempre abierta). El TTS
-  // nativo no tiene esa restricción, así que con el puente presente el
-  // audio queda desbloqueado desde el arranque.
-  let audioUnlocked = hasNativeTts;
-  if (hasNativeTts) {
-    unlock.classList.add('hidden');
+  function beep() {
+    const ctx = getAudioCtx();
+    if (!ctx || ctx.state !== 'running') return;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'square';
+    oscillator.frequency.value = BEEP_HZ;
+    // Cortar el oscilador de golpe suena como un "click" en el parlante del
+    // tablet; una rampa corta de apagado lo evita.
+    const fin = ctx.currentTime + BEEP_MS / 1000;
+    gain.gain.setValueAtTime(0.5, ctx.currentTime);
+    gain.gain.setTargetAtTime(0, fin, 0.015);
+    oscillator.connect(gain).connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(fin + 0.1);
   }
+
+  // En el kiosco el audio arranca habilitado: la app pone
+  // mediaPlaybackRequiresUserGesture=false (ver MainActivity), así que el
+  // AudioContext queda en 'running' sin que nadie toque nada. Un navegador
+  // de escritorio lo deja 'suspended' hasta que haya un gesto del usuario, y
+  // recién ahí tiene sentido mostrar el cartel para desbloquearlo -- si se
+  // mostrara en el tablet taparía el carrusel a pantalla completa.
+  function refreshUnlockOverlay() {
+    const ctx = getAudioCtx();
+    unlock.classList.toggle('hidden', !ctx || ctx.state === 'running');
+  }
+
   unlock.addEventListener('click', () => {
-    speak('Sonido activado');
-    audioUnlocked = true;
+    const ctx = getAudioCtx();
+    if (ctx) ctx.resume().then(beep, () => {});
     unlock.classList.add('hidden');
   });
+
+  const ctxInicial = getAudioCtx();
+  if (ctxInicial && ctxInicial.state === 'suspended') {
+    ctxInicial.resume().then(refreshUnlockOverlay, refreshUnlockOverlay);
+  }
+  refreshUnlockOverlay();
 
   let lastState = { status: 'waiting' };
 
@@ -225,7 +234,12 @@
     carousel.classList.add('hidden');
     message.classList.remove('hidden');
     message.textContent = state.message || '';
-    if (audioUnlocked) speak(state.message);
+    // Solo en el rechazo. Las dos rutas de denegación pitan: 'failure' (deuda)
+    // y 'connectionError' (falló la consulta a TSM), porque en las dos la
+    // persona queda sin poder salir. Una salida autorizada no suena.
+    if (state.status === 'failure' || state.status === 'connectionError') {
+      beep();
+    }
   }
 
   const source = new EventSource('/events');

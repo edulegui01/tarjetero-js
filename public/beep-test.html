@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prueba de pitido</title>
+<style>
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    font-family: system-ui, sans-serif;
+    background: #111827;
+    color: #f9fafb;
+  }
+  body { padding: 1.5rem; box-sizing: border-box; }
+  .page { max-width: 30rem; margin: 0 auto; }
+  h1 { font-size: 1.2rem; margin: 0 0 0.35rem; }
+  p.sub { margin: 0 0 1.5rem; color: #9ca3af; font-size: 0.9rem; line-height: 1.5; }
+  .card {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 0.9rem;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; }
+  label .val { float: right; color: #fbbf24; font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; margin-bottom: 1.25rem; }
+  select {
+    width: 100%;
+    font-size: 1rem;
+    font-family: inherit;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid #374151;
+    background: #111827;
+    color: #f9fafb;
+    margin-bottom: 0.5rem;
+  }
+  button {
+    width: 100%;
+    font-size: 1.05rem;
+    font-family: inherit;
+    font-weight: 700;
+    padding: 1rem;
+    border: none;
+    border-radius: 0.6rem;
+    background: #991b1b;
+    color: white;
+    cursor: pointer;
+  }
+  button:active { background: #7f1d1d; }
+  button.secondary {
+    background: #374151;
+    font-size: 0.9rem;
+    padding: 0.7rem;
+    font-weight: 600;
+    margin-top: 0.6rem;
+  }
+  .presets { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+  .presets button { margin-top: 0; }
+  code {
+    display: block;
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    color: #fbbf24;
+    white-space: pre;
+    overflow-x: auto;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <h1>Prueba de pitido</h1>
+    <p class="sub">
+      El mismo código que usa <code style="display:inline;border:0;padding:0;background:0">index.html</code>
+      cuando se rechaza una tarjeta. Movés los controles, probás, y los
+      valores que te gusten se copian abajo para pasarlos a
+      <code style="display:inline;border:0;padding:0;background:0">BEEP_HZ</code> /
+      <code style="display:inline;border:0;padding:0;background:0">BEEP_MS</code>.
+    </p>
+
+    <div class="card">
+      <label>Frecuencia <span class="val"><span id="hzVal">1400</span> Hz</span></label>
+      <input type="range" id="hz" min="200" max="2000" step="10" value="1400" />
+
+      <label>Duración <span class="val"><span id="msVal">200</span> ms</span></label>
+      <input type="range" id="ms" min="50" max="1500" step="10" value="200" />
+
+      <label>Volumen <span class="val"><span id="volVal">0.5</span></span></label>
+      <input type="range" id="vol" min="0.05" max="1" step="0.05" value="0.5" />
+
+      <label for="wave">Forma de onda</label>
+      <select id="wave">
+        <option value="square" selected>square — seco, tipo chicharra (el actual)</option>
+        <option value="sine">sine — suave, tipo timbre</option>
+        <option value="triangle">triangle — intermedio</option>
+        <option value="sawtooth">sawtooth — áspero, tipo alarma</option>
+      </select>
+
+      <button id="play">Probar pitido</button>
+      <button id="playTwice" class="secondary">Probarlo doble (dos pitidos cortos)</button>
+    </div>
+
+    <div class="card">
+      <label>Presets</label>
+      <div class="presets">
+        <button class="secondary" data-hz="1400" data-ms="200" data-wave="square">Actual (agudo y corto)</button>
+        <button class="secondary" data-hz="440" data-ms="700" data-wave="square">Grave y largo</button>
+        <button class="secondary" data-hz="880" data-ms="400" data-wave="square">Medio</button>
+        <button class="secondary" data-hz="600" data-ms="500" data-wave="sine">Suave</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>Valores actuales</label>
+      <code id="out"></code>
+    </div>
+  </div>
+
+<script>
+  const hz = document.getElementById('hz');
+  const ms = document.getElementById('ms');
+  const vol = document.getElementById('vol');
+  const wave = document.getElementById('wave');
+  const out = document.getElementById('out');
+
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtx = new Ctx();
+    }
+    return audioCtx;
+  }
+
+  // Misma función que index.html, con los parámetros abiertos a los controles.
+  function beep(offsetSeconds = 0) {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    const inicio = ctx.currentTime + offsetSeconds;
+    const fin = inicio + Number(ms.value) / 1000;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = wave.value;
+    oscillator.frequency.value = Number(hz.value);
+    gain.gain.setValueAtTime(Number(vol.value), inicio);
+    gain.gain.setTargetAtTime(0, fin, 0.015);
+    oscillator.connect(gain).connect(ctx.destination);
+    oscillator.start(inicio);
+    oscillator.stop(fin + 0.1);
+  }
+
+  function refresh() {
+    document.getElementById('hzVal').textContent = hz.value;
+    document.getElementById('msVal').textContent = ms.value;
+    document.getElementById('volVal').textContent = Number(vol.value).toFixed(2);
+    out.textContent =
+      'const BEEP_HZ = ' + hz.value + ';\n' +
+      'const BEEP_MS = ' + ms.value + ';\n' +
+      "oscillator.type = '" + wave.value + "';\n" +
+      'gain.gain.setValueAtTime(' + Number(vol.value).toFixed(2) + ', ctx.currentTime);';
+  }
+
+  [hz, ms, vol, wave].forEach((el) => el.addEventListener('input', refresh));
+
+  document.getElementById('play').addEventListener('click', () => beep());
+  document.getElementById('playTwice').addEventListener('click', () => {
+    beep(0);
+    beep(Number(ms.value) / 1000 + 0.12);
+  });
+
+  document.querySelectorAll('[data-hz]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      hz.value = btn.dataset.hz;
+      ms.value = btn.dataset.ms;
+      wave.value = btn.dataset.wave;
+      refresh();
+      beep();
+    });
+  });
+
+  refresh();
+</script>
+</body>
+</html>
