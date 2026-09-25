@@ -247,8 +247,28 @@ async function encenderLedRojo(params, cardCode) {
   }
 }
 
+// Mide cuánto tarda cada paso de una lectura (TSM, cada pulso a la placa)
+// para saber de dónde sale la demora hasta que la pantalla muestra el
+// resultado. Todo va a una sola línea de log al final de la lectura.
+function createStepTimer() {
+  const startedAt = Date.now();
+  let lastMark = startedAt;
+  const steps = [];
+  return {
+    mark(label) {
+      const now = Date.now();
+      steps.push(`${label} ${now - lastMark}ms`);
+      lastMark = now;
+    },
+    summary() {
+      return `${steps.join(" | ")} | total ${Date.now() - startedAt}ms`;
+    },
+  };
+}
+
 async function onCardRead(cardCode) {
   const params = getParams();
+  const timer = createStepTimer();
   console.log(
     `[${formatLocalTimestamp(new Date())}] Lectura de tarjeta: cardCode=${cardCode} -> consultando TSM`,
   );
@@ -258,11 +278,14 @@ async function onCardRead(cardCode) {
     consumoAbierto = await tsmContasClient.isCartaoConsumoAberto(cardCode, {
       codigoEmpresa: params.tsmCodigoEmpresa,
     });
+    timer.mark("TSM");
   } catch (err) {
+    timer.mark("TSM (falló)");
     // Falló la consulta (red caída, respuesta inesperada, etc.): por
     // seguridad se deniega el acceso en vez de dejar pasar sin verificar.
     logError(`Error consultando tarjeta en TSM para cardCode=${cardCode}`, err);
     await encenderLedRojo(params, cardCode);
+    timer.mark("LED rojo");
     try {
       await hikvisionClient.openDoor(params.puertaTarjetaDenegada);
     } catch (doorErr) {
@@ -271,10 +294,12 @@ async function onCardRead(cardCode) {
         doorErr,
       );
     }
+    timer.mark("puerta denegada");
     setState("connectionError", {
       message: params.connectionErrorMessage,
       cardCode,
     });
+    console.log(`cardCode=${cardCode} tiempos: ${timer.summary()}`);
     return;
   }
 
@@ -286,7 +311,9 @@ async function onCardRead(cardCode) {
       // El LED primero: es la señal inmediata de "no pasás", y no tiene
       // sentido que espere el round-trip de la puerta que devuelve la tarjeta.
       await encenderLedRojo(params, cardCode);
+      timer.mark("LED rojo");
       await hikvisionClient.openDoor(params.puertaTarjetaDenegada);
+      timer.mark("puerta denegada");
       setState("failure", { message: params.failureMessage, cardCode });
     } else {
       console.log(
@@ -297,16 +324,20 @@ async function onCardRead(cardCode) {
       // tarjeta queda atascada a mitad de camino en el lector en vez de
       // perderse en la caja con el molinete todavía trabado.
       await hikvisionClient.openDoor(params.puertaMolinete);
+      timer.mark("molinete");
       await hikvisionClient.openDoor(params.puertaTarjetaHabilitada);
+      timer.mark("puerta habilitada");
       setState("success", { message: params.successMessage, cardCode });
     }
   } catch (err) {
+    timer.mark("pulso a la placa (falló)");
     logError(`Error abriendo puerta para cardCode=${cardCode}`, err);
     setState("connectionError", {
       message: params.connectionErrorMessage,
       cardCode,
     });
   }
+  console.log(`cardCode=${cardCode} tiempos: ${timer.summary()}`);
 }
 
 function timingSafeEqualStr(a, b) {
